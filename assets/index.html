@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>journalctl</title>
+
+    <style>
+      body {
+        font-family: sans-serif;
+        font-size: 13px;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+      }
+
+      header h1 {
+        flex-grow: 1;
+      }
+    </style>
+
+  </head>
+
+  <body>
+
+    <header>
+      <h1>journalctl proxy</h1>
+      <div>
+        <select onchange="startListeningToService()">
+          <option>Select service</option>
+        </select>
+      </div>
+    </header>
+
+    <table border="1" width="100%">
+      <thead>
+        <tr>
+          <th>PID</th>
+          <th>Unit</th>
+          <th>Timestamp</th>
+          <th>Message</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <script>
+
+      let socket = null;
+
+      const select = document.querySelector('select');
+      const table = document.querySelector('table');
+
+      (async () => {
+        const servicesRequest = await fetch('/list-services');
+        const servicesList = await servicesRequest.text();
+
+        for (let line of servicesList.split('\n')) {
+          line = line.trim();
+          if (line === '') break;
+
+          if (!line.startsWith('UNIT')) {
+            const serviceName = line.split(' ')[0];
+            const option = document.createElement('option');
+            option.value = serviceName.split('.')[0];
+            option.innerText = serviceName;
+            select.appendChild(option)
+          }
+        }
+      })();
+
+      function startListeningToService() {
+        if (socket) {
+          socket.close(1000, 'Work complete');
+        }
+
+        socket = new WebSocket(`ws://${window.location.host}/ws/${select.value}`);
+
+        socket.onopen = function (e) {
+          console.log(`[open] Connection established with service: ${select.value}`);
+        };
+
+        socket.onmessage = function (event) {
+          const incomingMessage = JSON.parse(event.data);
+
+          const row = document.createElement('tr');
+          const pid = document.createElement('td');
+          const priority = document.createElement('td');
+          const systemdUnit = document.createElement('td');
+          const realtimeTimestamp = document.createElement('td');
+          const message = document.createElement('td');
+
+          pid.innerText = incomingMessage._PID;
+          systemdUnit.innerText = incomingMessage._SYSTEMD_UNIT;
+          realtimeTimestamp.innerText = incomingMessage.__REALTIME_TIMESTAMP;
+          message.innerText = incomingMessage.MESSAGE;
+
+          row.appendChild(pid);
+          row.appendChild(systemdUnit);
+          row.appendChild(realtimeTimestamp);
+          row.appendChild(message);
+
+          table.appendChild(row);
+        };
+      }
+
+    </script>
+
+  </body>
+
+</html>
